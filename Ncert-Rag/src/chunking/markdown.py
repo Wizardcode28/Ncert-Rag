@@ -1,7 +1,8 @@
 from typing import List
 from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
 
-from src.chunking.headings import clean_page_text, find_chapter_name, normalize_headings, has_body_text
+from src.chunking.headings import clean_page_text, find_chapter_name, normalize_headings
+from src.chunking.hierarchical import has_body_text
 from src.chunking.metadata import build_metadata
 from src.chunking.schemas import Chunk
 from src.parsing.schemas import ParsedChapter

@@ -1,5 +1,6 @@
 # import os
-# from pathlib import Path
+# import os
+from pathlib import Path
 
 # from dotenv import load_dotenv
 
@@ -50,6 +51,7 @@
 # MIN_PASSAGE_SCORE = 0.30   # passages scoring below this are not shown to the LLM
 
 # # --- Retrieval ---
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -104,4 +106,4 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 # --- Guardrails ---
 REFUSAL_SCORE = 0.10       # best re-rank score below this -> refuse without calling the LLM
 MIN_PASSAGE_SCORE = 0.30   # passages scoring below this are not shown to the LLM
-
+

@@ -1,5 +1,5 @@
-from typing import Literal, Optional, Dict, Any
-from pydantic import BaseModel
+from typing import Literal, Optional, List, Dict, Any
+from pydantic import BaseModel, Field
 
 ContentType = Literal["concept", "activity", "exercise", "general"]
 
@@ -20,13 +20,100 @@ class Chunk(ChunkMetadata):
     chunk_id: str
     text: str
 
+    @property
+    def char_count(self) -> int:
+        return len(self.text)
+
+    @property
+    def word_count(self) -> int:
+        return len(self.text.split())
+
+    @property
+    def line_count(self) -> int:
+        return len(self.text.splitlines())
+
+    def get_summary(self) -> Dict[str, Any]:
+        """Returns structured metadata & size metrics about the chunk."""
+        return {
+            "chunk_id": self.chunk_id,
+            "strategy": self.strategy,
+            "class_num": self.class_num,
+            "subject": self.subject,
+            "chapter_num": self.chapter_num,
+            "chapter_name": self.chapter_name,
+            "section_number": self.section_number,
+            "section_title": self.section_title,
+            "activity_label": self.activity_label,
+            "content_type": self.content_type,
+            "char_count": self.char_count,
+            "word_count": self.word_count,
+            "line_count": self.line_count,
+        }
+
 
 class ParentChunk(ChunkMetadata):
     parent_id: str
     text: str
+
+    @property
+    def char_count(self) -> int:
+        return len(self.text)
+
+    @property
+    def word_count(self) -> int:
+        return len(self.text.split())
+
+    @property
+    def line_count(self) -> int:
+        return len(self.text.splitlines())
+
+    def get_summary(self) -> Dict[str, Any]:
+        return {
+            "parent_id": self.parent_id,
+            "strategy": self.strategy,
+            "class_num": self.class_num,
+            "subject": self.subject,
+            "chapter_num": self.chapter_num,
+            "chapter_name": self.chapter_name,
+            "section_number": self.section_number,
+            "section_title": self.section_title,
+            "content_type": self.content_type,
+            "char_count": self.char_count,
+            "word_count": self.word_count,
+            "line_count": self.line_count,
+        }
 
 
 class ChildChunk(ChunkMetadata):
     chunk_id: str
     parent_id: str
     text: str
+
+    @property
+    def char_count(self) -> int:
+        return len(self.text)
+
+    @property
+    def word_count(self) -> int:
+        return len(self.text.split())
+
+    @property
+    def line_count(self) -> int:
+        return len(self.text.splitlines())
+
+    def get_summary(self) -> Dict[str, Any]:
+        return {
+            "chunk_id": self.chunk_id,
+            "parent_id": self.parent_id,
+            "strategy": self.strategy,
+            "class_num": self.class_num,
+            "subject": self.subject,
+            "chapter_num": self.chapter_num,
+            "chapter_name": self.chapter_name,
+            "section_number": self.section_number,
+            "section_title": self.section_title,
+            "content_type": self.content_type,
+            "char_count": self.char_count,
+            "word_count": self.word_count,
+            "line_count": self.line_count,
+        }

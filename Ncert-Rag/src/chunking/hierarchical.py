@@ -106,13 +106,14 @@ def build_chunks(chapter: ParsedChapter) -> Tuple[List[ParentChunk], List[ChildC
                 continue  # tiny leftovers such as an empty table caption
             parent_id = f"{prefix}_p{parent_counter:03d}" 
             parent_counter += 1
-            parents.append(ParentChunk(parent_id=parent_id, text=parent_text, **meta))
+            parents.append(ParentChunk(parent_id=parent_id, text=parent_text, strategy="hierarchical_parent", **meta))
 
             for child_index, child_text in enumerate(child_texts):
                 child = ChildChunk(
                     chunk_id=f"{parent_id}_c{child_index:02d}",
                     parent_id=parent_id,
                     text=child_text,
+                    strategy="hierarchical_child",
                     **meta,
                 )
                 children.append(child)
