@@ -1,0 +1,16 @@
+.venv/
+.env
+__pycache__/
+
+# Root project document files
+main.tex
+Science_Minor_Project.pdf
+pdf_data
+Research Papers
+chunking.ipynb
+
+# # Data exclusions
+# Ncert-Rag/data/raw/*
+# Ncert-Rag/data/raw1/*
+!Ncert-Rag/data/raw/.gitkeep
+
