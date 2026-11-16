@@ -1,14 +1,46 @@
 import os
 import streamlit as st
 
-# Automatically sync st.secrets to os.environ at the earliest entry point
-try:
-    if hasattr(st, "secrets"):
-        for k, v in st.secrets.items():
-            if isinstance(v, str):
-                os.environ[k] = v.strip()
-except Exception:
-    pass
+# Function to discover any keys present in st.secrets or os.environ
+def resolve_api_key(key_name: str) -> str:
+    # 1. Direct environment variable
+    if os.getenv(key_name):
+        return os.getenv(key_name).strip()
+
+    # 2. Direct streamlit secret
+    try:
+        if hasattr(st, "secrets") and key_name in st.secrets:
+            return str(st.secrets[key_name]).strip()
+    except Exception:
+        pass
+
+    # 3. Check case-insensitive or nested sections in st.secrets
+    try:
+        if hasattr(st, "secrets"):
+            for section in st.secrets:
+                # Check top level
+                if section.lower() == key_name.lower():
+                    return str(st.secrets[section]).strip()
+                # Check if user put them under a section like [general] or [env]
+                try:
+                    sec_obj = st.secrets[section]
+                    if hasattr(sec_obj, "items"):
+                        for sub_k, sub_v in sec_obj.items():
+                            if sub_k.lower() == key_name.lower():
+                                return str(sub_v).strip()
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    return ""
+
+
+# Sync all found secrets to os.environ immediately
+for k in ["GROQ_API_KEY", "GOOGLE_API_KEY", "OPENROUTER_API_KEY", "LLM_PROVIDERS"]:
+    found_val = resolve_api_key(k)
+    if found_val:
+        os.environ[k] = found_val
 
 from config.settings import CHUNKS_DIR, PARSED_DIR
 from src.chunking import (
@@ -141,14 +173,10 @@ st.markdown(
 def get_rag_components():
     embedder = build_embedder()
     client = get_client()
-    try:
-        llm = build_llm()
-    except Exception as e:
-        llm = None
-    return embedder, llm, client
+    return embedder, client
 
 
-embedder, llm, client = get_rag_components()
+embedder, client = get_rag_components()
 
 # Sidebar Navigation
 st.sidebar.markdown("### System Navigation")
@@ -172,6 +200,13 @@ st.sidebar.markdown(
     """
 )
 
+# Optional sidebar key override for instant browser input
+st.sidebar.markdown("---")
+with st.sidebar.expander("API Key Configuration", expanded=False):
+    manual_groq = st.text_input("Groq API Key (Override)", type="password", value=resolve_api_key("GROQ_API_KEY"))
+    if manual_groq:
+        os.environ["GROQ_API_KEY"] = manual_groq.strip()
+
 # ==============================================================================
 # MODULE 1: RAG Assistant
 # ==============================================================================
@@ -188,19 +223,25 @@ if mode == "RAG Assistant":
         unsafe_allow_html=True,
     )
 
+    # Resolve LLM dynamically on call so key additions don't need app cache bust
+    try:
+        llm = build_llm()
+    except Exception as e:
+        llm = None
+
     if llm is None:
-        st.error(
-            "No valid API keys detected in Streamlit Secrets. "
-            "Please go to Streamlit Cloud -> Settings -> Secrets and add GROQ_API_KEY."
-        )
-        st.info(
-            "Example Secrets format:\n\n"
-            "```toml\n"
-            'GROQ_API_KEY = "gsk_..."\n'
-            'LLM_PROVIDERS = "groq"\n'
-            "```"
-        )
-        st.stop()
+        st.warning("No active LLM detected. You can paste your Groq API key in the sidebar under 'API Key Configuration' or check Streamlit Secrets.")
+        
+        # Debug helper to show user what Streamlit Secrets actually received (without showing secret content)
+        with st.expander("Secrets Diagnosis Helper", expanded=False):
+            detected_keys = []
+            try:
+                if hasattr(st, "secrets"):
+                    detected_keys = list(st.secrets.keys())
+            except Exception as se:
+                detected_keys = [f"Error reading secrets: {se}"]
+            st.write("Keys currently found by Streamlit:", detected_keys)
+            st.info("Expected secret key: `GROQ_API_KEY`")
 
     available_cols = [c.name for c in client.list_collections()]
     friendly_options = {}
@@ -256,19 +297,23 @@ if mode == "RAG Assistant":
                         context_blocks.append(f"[{chapter_info}{sec}]\n{doc}")
 
                     full_context = "\n\n".join(context_blocks)
-                    prompt = (
-                        "You are an academic NCERT Science assistant. Answer the user's question with clarity, "
-                        "strict factual grounding, and precision using only the provided textbook passages below. "
-                        "Cite the chapter or section when referencing specific concepts.\n\n"
-                        f"Context Passages:\n{full_context}\n\n"
-                        f"Question: {query}\n\n"
-                        "Grounded Synthesis:"
-                    )
 
-                    response = llm.invoke(prompt)
+                    if llm:
+                        prompt = (
+                            "You are an academic NCERT Science assistant. Answer the user's question with clarity, "
+                            "strict factual grounding, and precision using only the provided textbook passages below. "
+                            "Cite the chapter or section when referencing specific concepts.\n\n"
+                            f"Context Passages:\n{full_context}\n\n"
+                            f"Question: {query}\n\n"
+                            "Grounded Synthesis:"
+                        )
 
-                    st.markdown("#### Synthesized Response")
-                    st.markdown(response.content)
+                        response = llm.invoke(prompt)
+
+                        st.markdown("#### Synthesized Response")
+                        st.markdown(response.content)
+                    else:
+                        st.info("LLM is currently unavailable; showing direct retrieved passages below:")
 
                     st.markdown("---")
                     st.markdown("#### Retrieved Source Documents")
