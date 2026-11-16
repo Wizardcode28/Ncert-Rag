@@ -8,21 +8,10 @@ from config.settings import (
     GEMINI_MODEL,
     GROQ_MODEL,
     LLM_MAX_RETRIES,
-    LLM_PROVIDERS,
     LLM_TEMPERATURE,
     OPENROUTER_BASE_URL,
     OPENROUTER_MODEL,
 )
-
-# Attempt to load from streamlit.secrets if running on Streamlit Cloud
-try:
-    import streamlit as st
-    if hasattr(st, "secrets"):
-        for k, v in st.secrets.items():
-            if isinstance(v, str) and k not in os.environ:
-                os.environ[k] = v
-except Exception:
-    pass
 
 KEY_NAMES = {
     "groq": "GROQ_API_KEY",
@@ -31,17 +20,36 @@ KEY_NAMES = {
 }
 
 
-def get_secret(key: str) -> str:
-    """Check os.environ first, then fallback to st.secrets."""
-    val = os.getenv(key, "")
-    if val:
+def get_secret(key_name: str) -> str:
+    """Robust lookup across os.environ, st.secrets (direct, case-insensitive, nested)."""
+    # 1. Environment variable
+    val = os.getenv(key_name, "")
+    if val and val.strip():
         return val.strip()
+
+    # 2. Streamlit secrets
     try:
         import streamlit as st
-        if hasattr(st, "secrets") and key in st.secrets:
-            return str(st.secrets[key]).strip()
+        if hasattr(st, "secrets"):
+            # Direct key
+            if key_name in st.secrets:
+                return str(st.secrets[key_name]).strip()
+            
+            # Case-insensitive or nested lookup
+            for sec_key in st.secrets:
+                if sec_key.lower() == key_name.lower():
+                    return str(st.secrets[sec_key]).strip()
+                try:
+                    sec_obj = st.secrets[sec_key]
+                    if hasattr(sec_obj, "items"):
+                        for sub_k, sub_v in sec_obj.items():
+                            if sub_k.lower() == key_name.lower():
+                                return str(sub_v).strip()
+                except Exception:
+                    pass
     except Exception:
         pass
+
     return ""
 
 
@@ -49,7 +57,7 @@ def build_single_llm(provider: str) -> BaseChatModel:
     key_name = KEY_NAMES.get(provider)
     api_key = get_secret(key_name) if key_name else ""
     if not api_key:
-        raise ValueError(f"{key_name} is missing. Add it to your .env or Streamlit Secrets.")
+        raise ValueError(f"{key_name} is missing.")
 
     if provider == "groq":
         return ChatGroq(
@@ -77,19 +85,15 @@ def build_single_llm(provider: str) -> BaseChatModel:
 
 
 def build_llm():
-    """Builds LLM with available providers in LLM_PROVIDERS that have valid API keys set."""
-    # Ensure environment has providers list
-    providers = LLM_PROVIDERS
+    """Builds LLM with available providers that have valid API keys set."""
+    # Check providers in priority order
+    provider_candidates = ["groq", "gemini", "openrouter"]
     env_providers = get_secret("LLM_PROVIDERS")
     if env_providers:
-        providers = [p.strip() for p in env_providers.split(",") if p.strip()]
-
-    # If still empty or default, test standard list
-    if not providers:
-        providers = ["groq", "gemini", "openrouter"]
+        provider_candidates = [p.strip() for p in env_providers.split(",") if p.strip()]
 
     available_models = []
-    for provider in providers:
+    for provider in provider_candidates:
         key_name = KEY_NAMES.get(provider)
         if key_name and get_secret(key_name):
             try:
@@ -98,7 +102,7 @@ def build_llm():
                 pass
 
     if len(available_models) == 0:
-        raise ValueError("No valid LLM providers found. Please check your .env or Streamlit Secrets.")
+        raise ValueError("No valid LLM providers found.")
 
     primary = available_models[0]
     fallbacks = available_models[1:]
