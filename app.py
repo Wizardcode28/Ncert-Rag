@@ -1,5 +1,14 @@
-import json
+import os
 import streamlit as st
+
+# Automatically sync st.secrets to os.environ at the earliest entry point
+try:
+    if hasattr(st, "secrets"):
+        for k, v in st.secrets.items():
+            if isinstance(v, str):
+                os.environ[k] = v.strip()
+except Exception:
+    pass
 
 from config.settings import CHUNKS_DIR, PARSED_DIR
 from src.chunking import (
@@ -26,7 +35,6 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    /* Global Base */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
     
     html, body, [class*="css"] {
@@ -34,7 +42,6 @@ st.markdown(
         color: #0F172A;
     }
     
-    /* Top Header Section */
     .app-header {
         border-bottom: 1px solid #E2E8F0;
         padding-bottom: 1.25rem;
@@ -64,7 +71,6 @@ st.markdown(
         margin-right: 0.5rem;
     }
     
-    /* Cards and Containers */
     .metric-card {
         background: #FFFFFF;
         border: 1px solid #E2E8F0;
@@ -114,7 +120,6 @@ st.markdown(
         justify-content: space-between;
     }
     
-    /* Clean Streamlit component tweaks */
     div[data-testid="stMetricValue"] {
         font-size: 1.5rem !important;
         font-weight: 700 !important;
@@ -135,8 +140,11 @@ st.markdown(
 @st.cache_resource(show_spinner="Initializing retrieval services...")
 def get_rag_components():
     embedder = build_embedder()
-    llm = build_llm()
     client = get_client()
+    try:
+        llm = build_llm()
+    except Exception as e:
+        llm = None
     return embedder, llm, client
 
 
@@ -179,6 +187,20 @@ if mode == "RAG Assistant":
         """,
         unsafe_allow_html=True,
     )
+
+    if llm is None:
+        st.error(
+            "No valid API keys detected in Streamlit Secrets. "
+            "Please go to Streamlit Cloud -> Settings -> Secrets and add GROQ_API_KEY."
+        )
+        st.info(
+            "Example Secrets format:\n\n"
+            "```toml\n"
+            'GROQ_API_KEY = "gsk_..."\n'
+            'LLM_PROVIDERS = "groq"\n'
+            "```"
+        )
+        st.stop()
 
     available_cols = [c.name for c in client.list_collections()]
     friendly_options = {}
@@ -291,6 +313,7 @@ elif mode == "Chunking Architecture Analysis":
     file_names = [f.name for f in json_files]
     selected_file = st.selectbox("Benchmark Target Chapter", file_names, index=0)
 
+    import json
     with open(PARSED_DIR / selected_file, "r", encoding="utf-8") as f:
         chapter_data = json.load(f)
     chapter = ParsedChapter(**chapter_data)
@@ -390,6 +413,7 @@ elif mode == "Repository Chunk Explorer":
         st.info("No serialized records found for this strategy.")
         st.stop()
 
+    import json
     chunks_in_file = []
     with open(folder_path / sel_file, "r", encoding="utf-8") as f:
         for line in f:
