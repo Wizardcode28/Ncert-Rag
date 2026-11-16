@@ -39,3 +39,5 @@ langchain-google-genai>=2.1.0,<3.0.0
 langchain-openai>=0.3.0,<0.4.0
 
 instructor>=1.0.0
+# --- Frontend ---
+streamlit>=1.40.0

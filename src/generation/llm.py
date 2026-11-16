@@ -1,4 +1,8 @@
 import os
+from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
+from langchain_openai import ChatOpenAI
 
 from config.settings import (
     GEMINI_MODEL,
@@ -10,7 +14,6 @@ from config.settings import (
     OPENROUTER_MODEL,
 )
 
-# Which environment variable holds each provider's API key
 KEY_NAMES = {
     "groq": "GROQ_API_KEY",
     "gemini": "GOOGLE_API_KEY",
@@ -18,35 +21,26 @@ KEY_NAMES = {
 }
 
 
-def build_single_llm(provider):
-    """Build one chat model. Only the chosen provider's package is imported."""
-    if provider not in KEY_NAMES:
-        raise ValueError(f"Unknown provider {provider!r}. Use: groq, gemini, openrouter")
-
-    key_name = KEY_NAMES[provider]
-    if not os.getenv(key_name):
+def build_single_llm(provider: str) -> BaseChatModel:
+    key_name = KEY_NAMES.get(provider)
+    if not key_name or not os.getenv(key_name):
         raise ValueError(f"{key_name} is missing. Add it to your .env file.")
 
     if provider == "groq":
-        from langchain_groq import ChatGroq
-
         return ChatGroq(
             model=GROQ_MODEL,
+            api_key=os.getenv("GROQ_API_KEY"),
             temperature=LLM_TEMPERATURE,
             max_retries=LLM_MAX_RETRIES,
         )
 
     if provider == "gemini":
-        from langchain_google_genai import ChatGoogleGenerativeAI
-
         return ChatGoogleGenerativeAI(
             model=GEMINI_MODEL,
+            google_api_key=os.getenv("GOOGLE_API_KEY"),
             temperature=LLM_TEMPERATURE,
             max_retries=LLM_MAX_RETRIES,
         )
-
-    # provider == "openrouter": OpenAI-compatible API on a different URL
-    from langchain_openai import ChatOpenAI
 
     return ChatOpenAI(
         model=OPENROUTER_MODEL,
@@ -58,13 +52,21 @@ def build_single_llm(provider):
 
 
 def build_llm():
-    """First provider in LLM_PROVIDERS is primary. The rest are used if it fails."""
-    if len(LLM_PROVIDERS) == 0:
-        raise ValueError("LLM_PROVIDERS is empty. Set it in your .env file.")
+    """Builds LLM with available providers in LLM_PROVIDERS that have valid API keys set."""
+    available_models = []
+    for provider in LLM_PROVIDERS:
+        key_name = KEY_NAMES.get(provider)
+        if key_name and os.getenv(key_name):
+            try:
+                available_models.append(build_single_llm(provider))
+            except Exception:
+                pass
 
-    models = [build_single_llm(provider) for provider in LLM_PROVIDERS]
-    primary = models[0]
-    fallbacks = models[1:]
+    if len(available_models) == 0:
+        raise ValueError("No valid LLM providers found. Please check your .env API keys.")
+
+    primary = available_models[0]
+    fallbacks = available_models[1:]
 
     if len(fallbacks) > 0:
         return primary.with_fallbacks(fallbacks)
