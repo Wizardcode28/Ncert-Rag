@@ -1,27 +1,23 @@
+import json
 import os
 import streamlit as st
 
 # Function to discover any keys present in st.secrets or os.environ
 def resolve_api_key(key_name: str) -> str:
-    # 1. Direct environment variable
     if os.getenv(key_name):
         return os.getenv(key_name).strip()
 
-    # 2. Direct streamlit secret
     try:
         if hasattr(st, "secrets") and key_name in st.secrets:
             return str(st.secrets[key_name]).strip()
     except Exception:
         pass
 
-    # 3. Check case-insensitive or nested sections in st.secrets
     try:
         if hasattr(st, "secrets"):
             for section in st.secrets:
-                # Check top level
                 if section.lower() == key_name.lower():
                     return str(st.secrets[section]).strip()
-                # Check if user put them under a section like [general] or [env]
                 try:
                     sec_obj = st.secrets[section]
                     if hasattr(sec_obj, "items"):
@@ -36,7 +32,6 @@ def resolve_api_key(key_name: str) -> str:
     return ""
 
 
-# Sync all found secrets to os.environ immediately
 for k in ["GROQ_API_KEY", "GOOGLE_API_KEY", "OPENROUTER_API_KEY", "LLM_PROVIDERS"]:
     found_val = resolve_api_key(k)
     if found_val:
@@ -63,32 +58,30 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Professional Executive Theme CSS
+# Professional Theme CSS - Works smoothly across Light and Dark modes
 st.markdown(
     """
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     
     html, body, [class*="css"] {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-        color: #0F172A;
     }
     
     .app-header {
-        border-bottom: 1px solid #E2E8F0;
-        padding-bottom: 1.25rem;
-        margin-bottom: 1.75rem;
+        border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+        padding-bottom: 1rem;
+        margin-bottom: 1.5rem;
     }
     .app-title {
         font-size: 1.85rem;
         font-weight: 700;
-        color: #0F172A;
         letter-spacing: -0.025em;
         margin-bottom: 0.25rem;
     }
     .app-subtitle {
         font-size: 0.95rem;
-        color: #64748B;
+        opacity: 0.75;
         font-weight: 400;
     }
     .badge {
@@ -97,71 +90,20 @@ st.markdown(
         font-size: 0.75rem;
         font-weight: 600;
         border-radius: 4px;
-        background-color: #EEF2F6;
-        color: #334155;
-        border: 1px solid #CBD5E1;
+        background-color: rgba(128, 128, 128, 0.15);
+        border: 1px solid rgba(128, 128, 128, 0.3);
         margin-right: 0.5rem;
     }
     
-    .metric-card {
-        background: #FFFFFF;
-        border: 1px solid #E2E8F0;
-        border-radius: 6px;
-        padding: 1rem 1.2rem;
-        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
-    }
-    .metric-label {
-        font-size: 0.78rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        color: #64748B;
-        letter-spacing: 0.05em;
-        margin-bottom: 0.35rem;
-    }
-    .metric-value {
-        font-size: 1.5rem;
-        font-weight: 700;
-        color: #0F172A;
-    }
-    
-    .panel-box {
-        background: #FFFFFF;
-        border: 1px solid #E2E8F0;
-        border-radius: 6px;
-        padding: 1.25rem;
-        margin-bottom: 1rem;
-    }
-    
-    .passage-card {
-        background: #F8FAFC;
-        border: 1px solid #E2E8F0;
-        border-left: 3px solid #2563EB;
-        border-radius: 4px;
-        padding: 1rem;
-        margin-bottom: 0.75rem;
-        font-size: 0.9rem;
-        line-height: 1.5;
-    }
-    
+    /* Native container styling for passage cards */
     .passage-meta {
-        font-size: 0.78rem;
+        font-size: 0.82rem;
         font-weight: 600;
-        color: #475569;
-        margin-bottom: 0.4rem;
+        margin-bottom: 0.5rem;
         display: flex;
         justify-content: space-between;
-    }
-    
-    div[data-testid="stMetricValue"] {
-        font-size: 1.5rem !important;
-        font-weight: 700 !important;
-        color: #0F172A !important;
-    }
-    div[data-testid="stMetricLabel"] {
-        font-size: 0.8rem !important;
-        font-weight: 600 !important;
-        text-transform: uppercase !important;
-        color: #64748B !important;
+        border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+        padding-bottom: 0.35rem;
     }
     </style>
     """,
@@ -200,7 +142,7 @@ st.sidebar.markdown(
     """
 )
 
-# Optional sidebar key override for instant browser input
+# Optional sidebar key override
 st.sidebar.markdown("---")
 with st.sidebar.expander("API Key Configuration", expanded=False):
     manual_groq = st.text_input("Groq API Key (Override)", type="password", value=resolve_api_key("GROQ_API_KEY"))
@@ -214,7 +156,6 @@ if mode == "RAG Assistant":
     st.markdown(
         """
         <div class="app-header">
-            <span class="badge">PRODUCTION PIPELINE</span>
             <span class="badge">NCERT CURRICULUM</span>
             <div class="app-title">NCERT Science Query Synthesis System</div>
             <div class="app-subtitle">Semantic search and grounded question-answering across indexed secondary science textbooks.</div>
@@ -223,25 +164,13 @@ if mode == "RAG Assistant":
         unsafe_allow_html=True,
     )
 
-    # Resolve LLM dynamically on call so key additions don't need app cache bust
     try:
         llm = build_llm()
-    except Exception as e:
+    except Exception:
         llm = None
 
     if llm is None:
         st.warning("No active LLM detected. You can paste your Groq API key in the sidebar under 'API Key Configuration' or check Streamlit Secrets.")
-        
-        # Debug helper to show user what Streamlit Secrets actually received (without showing secret content)
-        with st.expander("Secrets Diagnosis Helper", expanded=False):
-            detected_keys = []
-            try:
-                if hasattr(st, "secrets"):
-                    detected_keys = list(st.secrets.keys())
-            except Exception as se:
-                detected_keys = [f"Error reading secrets: {se}"]
-            st.write("Keys currently found by Streamlit:", detected_keys)
-            st.info("Expected secret key: `GROQ_API_KEY`")
 
     available_cols = [c.name for c in client.list_collections()]
     friendly_options = {}
@@ -319,18 +248,18 @@ if mode == "RAG Assistant":
                     st.markdown("#### Retrieved Source Documents")
                     for idx, (doc, meta, dist) in enumerate(zip(docs, metas, dists), start=1):
                         similarity_pct = max(0.0, min(100.0, (1.0 - dist) * 100))
-                        st.markdown(
-                            f"""
-                            <div class="passage-card">
+                        with st.container(border=True):
+                            st.markdown(
+                                f"""
                                 <div class="passage-meta">
                                     <span>PASSAGE {idx} — Class {meta.get('class_num')} | Chapter {meta.get('chapter_num')}: {meta.get('chapter_name')}</span>
-                                    <span>Relevance Confidence: {similarity_pct:.1f}% (Distance: {dist:.3f})</span>
+                                    <span>Relevance Confidence: <b>{similarity_pct:.1f}%</b> (Distance: {dist:.3f})</span>
                                 </div>
-                                <div>{doc}</div>
-                            </div>
-                            """,
-                            unsafe_allow_html=True,
-                        )
+                                """,
+                                unsafe_allow_html=True,
+                            )
+                            # Render pure markdown safely without raw unclosed HTML divs
+                            st.markdown(doc)
 
             except Exception as e:
                 st.error(f"Error executing retrieval pipeline: {e}")
@@ -369,7 +298,6 @@ elif mode == "Chunking Architecture Analysis":
     token_size = st.sidebar.number_input("Token Window (BPE tokens)", value=250, step=25)
     sem_size = st.sidebar.number_input("Semantic Target (chars)", value=800, step=50)
 
-    # Compute strategies
     fixed_chunks = split_fixed_size(chapter, chunk_size=fixed_size, chunk_overlap=50)
     rec_chunks = split_recursive(chapter, chunk_size=rec_size, chunk_overlap=100)
     tok_chunks = split_token_based(chapter, chunk_size=token_size, chunk_overlap=25)
@@ -387,7 +315,6 @@ elif mode == "Chunking Architecture Analysis":
         "Hierarchical Child Granular": children,
     }
 
-    # Comparison Matrix
     summary_data = []
     for s_name, chunk_list in strategies_map.items():
         if not chunk_list:
@@ -406,7 +333,6 @@ elif mode == "Chunking Architecture Analysis":
     st.markdown("#### Topology Comparison Matrix")
     st.dataframe(summary_data, use_container_width=True, hide_index=True)
 
-    # Detailed Inspection
     st.markdown("---")
     st.markdown("#### Granular Chunk Inspector")
     chosen_strategy = st.selectbox("Inspect Strategy", list(strategies_map.keys()))
