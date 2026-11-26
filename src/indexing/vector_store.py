@@ -1,7 +1,6 @@
-from typing import Any, Union
+from typing import Union
 import chromadb
 from chromadb.config import Settings
-from tqdm import tqdm
 
 from config.settings import VECTORSTORE_DIR
 from src.chunking.schemas import Chunk, ChildChunk, ParentChunk

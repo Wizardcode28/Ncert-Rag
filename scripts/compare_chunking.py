@@ -10,7 +10,6 @@ Usage:
 
 import argparse
 import json
-from pathlib import Path
 from typing import Dict, Any, List
 
 from config.settings import PARSED_DIR
@@ -18,7 +17,6 @@ from src.parsing.schemas import ParsedChapter
 from src.chunking import (
     split_fixed_size,
     split_recursive,
-    split_token_based,
     split_semantic_sentences,
     split_markdown_sections,
     split_hierarchical,
@@ -114,7 +112,6 @@ def main():
     # Execute all chunking strategies
     fixed_chunks = split_fixed_size(chapter, chunk_size=500, chunk_overlap=50)
     rec_chunks = split_recursive(chapter, chunk_size=800, chunk_overlap=100)
-    tok_chunks = split_token_based(chapter, chunk_size=250, chunk_overlap=25)
     sem_chunks = split_semantic_sentences(chapter, target_chunk_chars=800)
     md_chunks = split_markdown_sections(chapter, max_chunk_size=1200)
     parents, children = split_hierarchical(chapter)
@@ -122,7 +119,6 @@ def main():
     strategies = [
         ("Fixed Character (500c)", fixed_chunks),
         ("Recursive Character (800c)", rec_chunks),
-        ("Token-based (250 tok)", tok_chunks),
         ("Semantic Sentence Split", sem_chunks),
         ("Markdown Heading Split", md_chunks),
         ("Hierarchical (Parents)", parents),

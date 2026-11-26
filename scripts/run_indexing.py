@@ -15,8 +15,6 @@ Usage:
 """
 
 import argparse
-from pathlib import Path
-from typing import List
 
 from config.settings import CHUNKS_DIR
 from src.indexing.embedder import build_embedder
@@ -28,7 +26,6 @@ AVAILABLE_STRATEGIES = [
     "hierarchical_parents",
     "recursive",
     "semantic",
-    "token",
     "markdown",
     "fixed",
 ]

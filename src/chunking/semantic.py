@@ -1,5 +1,5 @@
 import re
-from typing import List, Optional
+from typing import List
 from src.chunking.schemas import Chunk
 from src.chunking.headings import clean_page_text, find_chapter_name
 from src.parsing.schemas import ParsedChapter

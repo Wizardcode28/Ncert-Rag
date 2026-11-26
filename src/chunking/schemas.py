@@ -1,5 +1,5 @@
-from typing import Literal, Optional, List, Dict, Any
-from pydantic import BaseModel, Field
+from typing import Literal, Optional, Dict, Any
+from pydantic import BaseModel
 
 ContentType = Literal["concept", "activity", "exercise", "general"]
 

@@ -3,7 +3,6 @@ from typing import List, Tuple
 
 from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
 
-from src.chunking.headings import find_chapter_name, normalize_headings
 from src.chunking.metadata import build_metadata
 from src.chunking.schemas import ChildChunk, ParentChunk
 from src.parsing.schemas import ParsedChapter

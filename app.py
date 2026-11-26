@@ -1,6 +1,7 @@
 import json
 import os
 import streamlit as st
+from rank_bm25 import BM25Okapi
 
 # Function to discover any keys present in st.secrets or os.environ
 def resolve_api_key(key_name: str) -> str:
@@ -44,7 +45,6 @@ from src.chunking import (
     split_markdown_sections,
     split_recursive,
     split_semantic_sentences,
-    split_token_based,
 )
 from src.generation.llm import build_llm
 from src.indexing.embedder import build_embedder
@@ -118,6 +118,62 @@ def get_rag_components():
     return embedder, client
 
 
+@st.cache_resource(show_spinner="Building BM25 lexical index...")
+def get_bm25_index(strategy_name: str):
+    col = get_collection(strategy_name)
+    data = col.get(include=["documents", "metadatas"])
+    ids = data["ids"]
+    docs = data["documents"]
+    metas = data["metadatas"]
+    tokenized = [doc.lower().split() for doc in docs]
+    bm25 = BM25Okapi(tokenized)
+    return bm25, ids, docs, metas
+
+
+def hybrid_search(strategy_name: str, query: str, top_k: int, rrf_k: int = 60):
+    """Combine Dense (ChromaDB) and Sparse (BM25) results using Reciprocal Rank Fusion."""
+    col = get_collection(strategy_name)
+    fetch_k = max(top_k * 3, 15)
+
+    # 1. Dense search
+    q_vec = embedder.embed_query(query)
+    dense_res = col.query(
+        query_embeddings=[q_vec],
+        n_results=fetch_k,
+        include=["documents", "metadatas", "distances"],
+    )
+    dense_ids = dense_res["ids"][0] if dense_res["ids"] else []
+    dense_docs = dense_res["documents"][0] if dense_res["documents"] else []
+    dense_metas = dense_res["metadatas"][0] if dense_res["metadatas"] else []
+
+    # 2. BM25 sparse search
+    bm25, all_ids, all_docs, all_metas = get_bm25_index(strategy_name)
+    bm25_scores = bm25.get_scores(query.lower().split())
+    top_bm25_indices = sorted(range(len(bm25_scores)), key=lambda i: bm25_scores[i], reverse=True)[:fetch_k]
+
+    # 3. Reciprocal Rank Fusion (RRF)
+    rrf_scores = {}
+    doc_lookup = {}
+
+    for rank, (cid, doc, meta) in enumerate(zip(dense_ids, dense_docs, dense_metas), start=1):
+        rrf_scores[cid] = rrf_scores.get(cid, 0.0) + 1.0 / (rrf_k + rank)
+        doc_lookup[cid] = (doc, meta)
+
+    for rank, idx in enumerate(top_bm25_indices, start=1):
+        if bm25_scores[idx] <= 0:
+            continue
+        cid = all_ids[idx]
+        rrf_scores[cid] = rrf_scores.get(cid, 0.0) + 1.0 / (rrf_k + rank)
+        if cid not in doc_lookup:
+            doc_lookup[cid] = (all_docs[idx], all_metas[idx])
+
+    ranked_ids = sorted(rrf_scores.keys(), key=lambda cid: rrf_scores[cid], reverse=True)[:top_k]
+    docs = [doc_lookup[cid][0] for cid in ranked_ids]
+    metas = [doc_lookup[cid][1] for cid in ranked_ids]
+    scores = [rrf_scores[cid] for cid in ranked_ids]
+    return docs, metas, scores
+
+
 embedder, client = get_rag_components()
 
 # Sidebar Navigation
@@ -130,16 +186,6 @@ mode = st.sidebar.radio(
         "Repository Chunk Explorer",
     ],
     label_visibility="collapsed",
-)
-
-st.sidebar.markdown("---")
-st.sidebar.markdown(
-    """
-    **Environment Architecture**  
-    - Retrieval: Dense Cosine (ChromaDB)
-    - Embedding: MiniLM-L6 (384-d ONNX)
-    - LLM Engine: Groq / Gemini (LCEL)
-    """
 )
 
 # Optional sidebar key override
@@ -175,8 +221,13 @@ if mode == "RAG Assistant":
     available_cols = [c.name for c in client.list_collections()]
     friendly_options = {}
     for c_name in available_cols:
+        if "bge" in c_name.lower() or "token" in c_name.lower():
+            continue
         strat = c_name.replace("ncert_science_minilm_", "").replace("ncert_science_", "")
-        friendly_options[f"{strat.capitalize()} Strategy Index ({c_name})"] = strat
+        if strat == "hierarchical_parents":
+            continue
+        display_name = "Hierarchical" if strat == "hierarchical_children" else strat.replace("_", " ").title()
+        friendly_options[display_name] = strat
 
     if not friendly_options:
         st.warning("No vector store collections detected. Index chunks to enable retrieval.")
@@ -195,22 +246,15 @@ if mode == "RAG Assistant":
     )
 
     if st.button("Synthesize Answer", type="primary") and query.strip():
-        with st.spinner("Executing retrieval and LLM context synthesis..."):
+        with st.spinner("Executing hybrid retrieval (Dense + BM25) and LLM context synthesis..."):
             try:
-                col = get_collection(selected_strategy)
-                q_vec = embedder.embed_query(query.strip())
-                res = col.query(
-                    query_embeddings=[q_vec],
-                    n_results=top_k,
-                    include=["documents", "metadatas", "distances"],
-                )
+                docs, metas, scores = hybrid_search(selected_strategy, query.strip(), top_k)
 
-                docs = res["documents"][0] if res["documents"] else []
-                metas = res["metadatas"][0] if res["metadatas"] else []
-                dists = res["distances"][0] if res["distances"] else []
-
-                if not docs:
-                    st.warning("No matching passages exceeded retrieval threshold.")
+                # Gate 1: Relevance Threshold
+                if not docs or max(scores) < 0.015:
+                    st.warning(
+                        "Gate 1 Refusal: No sufficiently relevant NCERT passages were found for this query."
+                    )
                 else:
                     context_blocks = []
                     for doc, meta in zip(docs, metas):
@@ -231,29 +275,36 @@ if mode == "RAG Assistant":
                         prompt = (
                             "You are an academic NCERT Science assistant. Answer the user's question with clarity, "
                             "strict factual grounding, and precision using only the provided textbook passages below. "
-                            "Cite the chapter or section when referencing specific concepts.\n\n"
+                            "Cite the chapter or section when referencing specific concepts. "
+                            "If the provided passages do not contain enough information to answer, reply with exactly: INSUFFICIENT_CONTEXT.\n\n"
                             f"Context Passages:\n{full_context}\n\n"
                             f"Question: {query}\n\n"
                             "Grounded Synthesis:"
                         )
 
                         response = llm.invoke(prompt)
+                        answer_text = response.content.strip()
 
-                        st.markdown("#### Synthesized Response")
-                        st.markdown(response.content)
+                        # Gate 2: Model Abstention Check
+                        if "INSUFFICIENT_CONTEXT" in answer_text:
+                            st.warning(
+                                "Gate 2 Refusal: The retrieved NCERT passages do not contain enough information to answer this question."
+                            )
+                        else:
+                            st.markdown("#### Synthesized Response")
+                            st.markdown(answer_text)
                     else:
                         st.info("LLM is currently unavailable; showing direct retrieved passages below:")
 
                     st.markdown("---")
                     st.markdown("#### Retrieved Source Documents")
-                    for idx, (doc, meta, dist) in enumerate(zip(docs, metas, dists), start=1):
-                        similarity_pct = max(0.0, min(100.0, (1.0 - dist) * 100))
+                    for idx, (doc, meta, score) in enumerate(zip(docs, metas, scores), start=1):
                         with st.container(border=True):
                             st.markdown(
                                 f"""
                                 <div class="passage-meta">
                                     <span>PASSAGE {idx} — Class {meta.get('class_num')} | Chapter {meta.get('chapter_num')}: {meta.get('chapter_name')}</span>
-                                    <span>Relevance Confidence: <b>{similarity_pct:.1f}%</b> (Distance: {dist:.3f})</span>
+                                    <span>Hybrid RRF Score: <b>{score:.4f}</b></span>
                                 </div>
                                 """,
                                 unsafe_allow_html=True,
@@ -287,7 +338,6 @@ elif mode == "Chunking Architecture Analysis":
     file_names = [f.name for f in json_files]
     selected_file = st.selectbox("Benchmark Target Chapter", file_names, index=0)
 
-    import json
     with open(PARSED_DIR / selected_file, "r", encoding="utf-8") as f:
         chapter_data = json.load(f)
     chapter = ParsedChapter(**chapter_data)
@@ -295,12 +345,10 @@ elif mode == "Chunking Architecture Analysis":
     st.sidebar.markdown("### Hyperparameter Tuning")
     fixed_size = st.sidebar.number_input("Fixed Window (chars)", value=500, step=50)
     rec_size = st.sidebar.number_input("Recursive Window (chars)", value=800, step=50)
-    token_size = st.sidebar.number_input("Token Window (BPE tokens)", value=250, step=25)
     sem_size = st.sidebar.number_input("Semantic Target (chars)", value=800, step=50)
 
     fixed_chunks = split_fixed_size(chapter, chunk_size=fixed_size, chunk_overlap=50)
     rec_chunks = split_recursive(chapter, chunk_size=rec_size, chunk_overlap=100)
-    tok_chunks = split_token_based(chapter, chunk_size=token_size, chunk_overlap=25)
     sem_chunks = split_semantic_sentences(chapter, target_chunk_chars=sem_size)
     md_chunks = split_markdown_sections(chapter, max_chunk_size=1200)
     parents, children = split_hierarchical(chapter)
@@ -308,7 +356,6 @@ elif mode == "Chunking Architecture Analysis":
     strategies_map = {
         "Fixed Character Window": fixed_chunks,
         "Recursive Text Splitting": rec_chunks,
-        "Token-Based (Tiktoken BPE)": tok_chunks,
         "Semantic Sentence Boundary": sem_chunks,
         "Markdown Header Split": md_chunks,
         "Hierarchical Parent Context": parents,
@@ -384,7 +431,6 @@ elif mode == "Repository Chunk Explorer":
         st.info("No serialized records found for this strategy.")
         st.stop()
 
-    import json
     chunks_in_file = []
     with open(folder_path / sel_file, "r", encoding="utf-8") as f:
         for line in f:

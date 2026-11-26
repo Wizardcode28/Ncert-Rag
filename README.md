@@ -1,14 +1,12 @@
-# Multimodal NCERT Science Retrieval-Augmented Generation (RAG) System
+# NCERT Science Retrieval-Augmented Generation (RAG) & Chunking Studio
 
-A domain-adapted, production-grade Retrieval-Augmented Generation (RAG) pipeline designed for textbook question answering (NCERT Science, Classes 6–10/12). 
+A domain-adapted Retrieval-Augmented Generation (RAG) pipeline and chunking benchmark suite designed for NCERT Science textbooks (Classes 6–10).
 
-This project implements an end-to-end framework featuring **PDF layout parsing**, **comparative chunking strategies**, **hybrid dense-lexical indexing**, **two-stage retrieval with cross-encoder re-ranking**, **parent-child context expansion**, and **multi-gate hallucination guardrails**.
+This project implements an end-to-end framework featuring **PDF layout parsing**, **comparative chunking strategies**, **lightweight ONNX embeddings (`all-MiniLM-L6-v2`)**, **per-strategy ChromaDB vector collections**, **LLM answer synthesis (Groq / Gemini)**, and an **interactive Streamlit web interface (`app.py`)**.
 
 ---
 
 ## 1. Architectural Overview & End-to-End Workflow
-
-The system bridges raw textbook PDFs to factually grounded student tutoring answers through an asynchronous, modular pipeline:
 
 ```
 [Raw Textbook PDFs]
@@ -16,68 +14,26 @@ The system bridges raw textbook PDFs to factually grounded student tutoring answ
         ▼ (Document Parsing & Structure Extraction)
 [Parsed JSON: Structured Chapters, Headings, Activities, Tables]
         │
-        ▼ (Chunking Strategies Evaluation)
-[Document Chunks: Fixed, Token, Recursive, Semantic, Markdown, Hierarchical]
+        ▼ (5 Chunking Strategies)
+[Fixed | Recursive | Semantic | Markdown | Hierarchical]
         │
-   ┌────┴─────────────────────────────┐
-   │                                  │
-   ▼ (Embedding Generation)           ▼ (Metadata & Inverted Index)
-[Dense Embeddings: ONNX FastEmbed]  [Lexical Corpus / BM25 Inverted Index]
-   │                                  │
-   └───────────────┬──────────────────┘
-                   ▼
-       [Persistent Vector Store (ChromaDB)]
-                   │
-═══════════════════╪══════════════════════════════════════════════════════════
-               RUNTIME QUERY WORKFLOW
-═══════════════════╪══════════════════════════════════════════════════════════
-                   │
-           [Student Query]
-                   │
-   ┌───────────────┴───────────────┐
-   ▼                               ▼
-[BM25 Lexical Search]     [Dense Cosine Search]
-(Class/Content Filter)    (all-MiniLM-L6-v2)
-   │                               │
-   └───────────────┬───────────────┘
-                   ▼
- [Ensemble Hybrid Fusion (Weighted RRF, c=60)]
-                   │ (Candidate Child Chunks)
-                   ▼
- [Cross-Encoder Re-Ranker (ms-marco-TinyBERT / MiniLM)]
-                   │
-                   ▼ (Deduplicate & Map via parent_id)
- [Parent Context Expansion (Complete Conceptual Sections)]
-                   │
-                   ▼
-      ┌─────────────────────────┐
-      │  Guardrail Gate 1:      │ ──[Below REFUSAL_SCORE?]──► Refusal Response
-      │  Relevance Threshold    │
-      └────────────┬────────────┘
-                   │
-      ┌─────────────────────────┐
-      │  Passage Filtering:     │ ──[Keep Passages >= MIN_PASSAGE_SCORE]
-      │  Prune Weak Context     │
-      └────────────┬────────────┘
-                   │
-                   ▼
- [Prompt Assembly: Numbered Grounded Excerpts + Guardrail Prompt]
-                   │
-                   ▼
- [LLM Generation: Groq / Gemini / OpenRouter Fallback Cascade]
-                   │
-      ┌─────────────────────────┐
-      │  Guardrail Gate 2:      │ ──[Returns INSUFFICIENT_CONTEXT?]──► Refusal
-      │  Model Abstention Check │
-      └────────────┬────────────┘
-                   │
-      ┌─────────────────────────┐
-      │  Guardrail Gate 3:      │ ──[No Valid Citations?]──► Retry / Refusal
-      │  Citation Verification  │
-      └────────────┬────────────┘
-                   │
-                   ▼
- [Final Structured Answer with Verified Metadata Citations & Extra Knowledge]
+        ▼ (Lightweight ONNX Embeddings: all-MiniLM-L6-v2)
+[Per-Strategy Vector Collections in ChromaDB]
+        │
+        ▼ (Streamlit UI: Hybrid Retrieval)
+[Dense Cosine Search (ChromaDB) + BM25 Lexical Search]
+        │
+        ▼ (Reciprocal Rank Fusion - Top K)
+[Gate 1: Relevance Threshold Check]
+        │
+        ▼
+[LLM Generation: Groq / Gemini Fallback Cascade]
+        │
+        ▼
+[Gate 2: Model Abstention Check]
+        │
+        ▼
+[Grounded Answer + Retrieved Source Passages]
 ```
 
 ---
