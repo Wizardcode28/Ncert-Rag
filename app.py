@@ -48,7 +48,8 @@ from src.chunking import (
 )
 from src.generation.llm import build_llm
 from src.indexing.embedder import build_embedder
-from src.indexing.vector_store import get_client, get_collection
+from src.indexing.loader import load_chunk_file
+from src.indexing.vector_store import get_client, get_collection, index_chunks
 from src.parsing.schemas import ParsedChapter
 
 # Page configuration
@@ -218,25 +219,18 @@ if mode == "RAG Assistant":
     if llm is None:
         st.warning("No active LLM detected. You can paste your Groq API key in the sidebar under 'API Key Configuration' or check Streamlit Secrets.")
 
-    available_cols = [c.name for c in client.list_collections()]
-    friendly_options = {}
-    for c_name in available_cols:
-        if "bge" in c_name.lower() or "token" in c_name.lower():
-            continue
-        strat = c_name.replace("ncert_science_minilm_", "").replace("ncert_science_", "")
-        if strat == "hierarchical_parents":
-            continue
-        display_name = "Hierarchical" if strat == "hierarchical_children" else strat.replace("_", " ").title()
-        friendly_options[display_name] = strat
-
-    if not friendly_options:
-        st.warning("No vector store collections detected. Index chunks to enable retrieval.")
-        st.stop()
+    strategy_options = {
+        "Semantic": "semantic",
+        "Recursive": "recursive",
+        "Hierarchical": "hierarchical_children",
+        "Fixed": "fixed",
+        "Markdown": "markdown",
+    }
 
     c1, c2 = st.columns([3, 1])
     with c1:
-        selected_display = st.selectbox("Vector Store Collection", list(friendly_options.keys()))
-        selected_strategy = friendly_options[selected_display]
+        selected_display = st.selectbox("Vector Store Collection", list(strategy_options.keys()))
+        selected_strategy = strategy_options[selected_display]
     with c2:
         top_k = st.slider("Passage Retrieval Depth (k)", min_value=1, max_value=8, value=3)
 
@@ -246,6 +240,16 @@ if mode == "RAG Assistant":
     )
 
     if st.button("Synthesize Answer", type="primary") and query.strip():
+        col = get_collection(selected_strategy)
+        if col.count() == 0:
+            chunk_folder = CHUNKS_DIR / selected_strategy
+            jsonl_files = sorted(chunk_folder.glob("*.jsonl")) if chunk_folder.exists() else []
+            if jsonl_files:
+                with st.spinner(f"First-time setup: indexing '{selected_display}' chunks into vector store..."):
+                    for fpath in jsonl_files:
+                        chunks = load_chunk_file(fpath)
+                        if chunks:
+                            index_chunks(col, embedder, chunks)
         with st.spinner("Executing hybrid retrieval (Dense + BM25) and LLM context synthesis..."):
             try:
                 docs, metas, scores = hybrid_search(selected_strategy, query.strip(), top_k)
