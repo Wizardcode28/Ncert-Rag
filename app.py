@@ -42,9 +42,8 @@ from config.settings import CHUNKS_DIR, PARSED_DIR
 from src.chunking import (
     split_fixed_size,
     split_hierarchical,
-    split_markdown_sections,
     split_recursive,
-    split_semantic_sentences,
+    split_sentence_chunks,
 )
 from src.generation.llm import build_llm
 from src.indexing.embedder import build_embedder
@@ -220,11 +219,10 @@ if mode == "RAG Assistant":
         st.warning("No active LLM detected. You can paste your Groq API key in the sidebar under 'API Key Configuration' or check Streamlit Secrets.")
 
     strategy_options = {
-        "Semantic": "semantic",
+        "Sentence": "semantic",
         "Recursive": "recursive",
         "Hierarchical": "hierarchical_children",
         "Fixed": "fixed",
-        "Markdown": "markdown",
     }
 
     c1, c2 = st.columns([3, 1])
@@ -349,19 +347,17 @@ elif mode == "Chunking Architecture Analysis":
     st.sidebar.markdown("### Hyperparameter Tuning")
     fixed_size = st.sidebar.number_input("Fixed Window (chars)", value=500, step=50)
     rec_size = st.sidebar.number_input("Recursive Window (chars)", value=800, step=50)
-    sem_size = st.sidebar.number_input("Semantic Target (chars)", value=800, step=50)
+    sent_size = st.sidebar.number_input("Sentence Target (chars)", value=800, step=50)
 
     fixed_chunks = split_fixed_size(chapter, chunk_size=fixed_size, chunk_overlap=50)
     rec_chunks = split_recursive(chapter, chunk_size=rec_size, chunk_overlap=100)
-    sem_chunks = split_semantic_sentences(chapter, target_chunk_chars=sem_size)
-    md_chunks = split_markdown_sections(chapter, max_chunk_size=1200)
+    sent_chunks = split_sentence_chunks(chapter, target_chunk_chars=sent_size)
     parents, children = split_hierarchical(chapter)
 
     strategies_map = {
         "Fixed Character Window": fixed_chunks,
         "Recursive Text Splitting": rec_chunks,
-        "Semantic Sentence Boundary": sem_chunks,
-        "Markdown Header Split": md_chunks,
+        "Sentence-Based Split": sent_chunks,
         "Hierarchical Parent Context": parents,
         "Hierarchical Child Granular": children,
     }

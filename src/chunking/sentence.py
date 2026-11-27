@@ -19,7 +19,7 @@ def split_sentences(text: str) -> List[str]:
     return sentences
 
 
-def split_semantic_sentences(
+def split_sentence_chunks(
     chapter: ParsedChapter,
     target_chunk_chars: int = 800,
     max_chunk_chars: int = 1200,
@@ -60,7 +60,7 @@ def split_semantic_sentences(
                         subject=chapter.subject,
                         chapter_num=chapter.chapter_num,
                         chapter_name=chapter_name,
-                        strategy="semantic",
+                        strategy="sentence",
                     )
                 )
                 chunk_counter += 1

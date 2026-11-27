@@ -17,8 +17,7 @@ from src.parsing.schemas import ParsedChapter
 from src.chunking import (
     split_fixed_size,
     split_recursive,
-    split_semantic_sentences,
-    split_markdown_sections,
+    split_sentence_chunks,
     split_hierarchical,
 )
 
@@ -47,22 +46,18 @@ def process_chapter(json_path: Path):
     rec_chunks = split_recursive(chapter, chunk_size=800, chunk_overlap=100)
     write_jsonl(CHUNKS_DIR / "recursive" / f"{stem}_recursive.jsonl", rec_chunks)
 
-    # 3. Semantic / sentence chunking
-    sem_chunks = split_semantic_sentences(chapter, target_chunk_chars=800)
-    write_jsonl(CHUNKS_DIR / "semantic" / f"{stem}_semantic.jsonl", sem_chunks)
+    # 3. Sentence-based chunking
+    sent_chunks = split_sentence_chunks(chapter, target_chunk_chars=800)
+    write_jsonl(CHUNKS_DIR / "sentence" / f"{stem}_sentence.jsonl", sent_chunks)
 
-    # 4. Markdown section chunking
-    md_chunks = split_markdown_sections(chapter, max_chunk_size=1200)
-    write_jsonl(CHUNKS_DIR / "markdown" / f"{stem}_markdown.jsonl", md_chunks)
-
-    # 5. Hierarchical (Parents & Children)
+    # 4. Hierarchical (Parents & Children)
     parents, children = split_hierarchical(chapter)
     write_jsonl(CHUNKS_DIR / "hierarchical_parents" / f"{stem}_parents.jsonl", parents)
     write_jsonl(CHUNKS_DIR / "hierarchical_children" / f"{stem}_children.jsonl", children)
 
     print(
         f"    Saved: fixed={len(fixed_chunks)}, recursive={len(rec_chunks)}, "
-        f"semantic={len(sem_chunks)}, md={len(md_chunks)}, "
+        f"sentence={len(sent_chunks)}, "
         f"hierarchical=(P:{len(parents)}, C:{len(children)})"
     )
 

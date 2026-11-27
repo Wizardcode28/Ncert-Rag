@@ -17,8 +17,7 @@ from src.parsing.schemas import ParsedChapter
 from src.chunking import (
     split_fixed_size,
     split_recursive,
-    split_semantic_sentences,
-    split_markdown_sections,
+    split_sentence_chunks,
     split_hierarchical,
 )
 
@@ -112,15 +111,13 @@ def main():
     # Execute all chunking strategies
     fixed_chunks = split_fixed_size(chapter, chunk_size=500, chunk_overlap=50)
     rec_chunks = split_recursive(chapter, chunk_size=800, chunk_overlap=100)
-    sem_chunks = split_semantic_sentences(chapter, target_chunk_chars=800)
-    md_chunks = split_markdown_sections(chapter, max_chunk_size=1200)
+    sent_chunks = split_sentence_chunks(chapter, target_chunk_chars=800)
     parents, children = split_hierarchical(chapter)
 
     strategies = [
         ("Fixed Character (500c)", fixed_chunks),
         ("Recursive Character (800c)", rec_chunks),
-        ("Semantic Sentence Split", sem_chunks),
-        ("Markdown Heading Split", md_chunks),
+        ("Sentence-Based Split", sent_chunks),
         ("Hierarchical (Parents)", parents),
         ("Hierarchical (Children)", children),
     ]

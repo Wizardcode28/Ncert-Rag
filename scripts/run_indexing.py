@@ -25,8 +25,7 @@ AVAILABLE_STRATEGIES = [
     "hierarchical_children",
     "hierarchical_parents",
     "recursive",
-    "semantic",
-    "markdown",
+    "sentence",
     "fixed",
 ]
 
